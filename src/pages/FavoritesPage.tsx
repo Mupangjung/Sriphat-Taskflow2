@@ -1,12 +1,15 @@
+import { useAuth } from '../context/AuthContext';
+import { useContent } from '../context/ContentContext';
+import { focusCodeLabel } from '../types/clinical';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Bookmark, Search, Trash2 } from 'lucide-react';
-import { MOCK_DISEASES } from '../data/mockDiseases';
-import { MOCK_FOCUSES } from '../data/mockFocuses';
 import { useAppState } from '../context/AppStateContext';
 
 export const FavoritesPage: React.FC = () => {
-  const { favorites, removeFavorite, clearAllFavorites } = useAppState();
+  const { diseases, focuses, abbreviations } = useContent();
+  const { user } = useAuth();
+  const { favorites, removeFavorite, clearAllFavorites, importGuestFavorites, guestFavoriteCount, favoritesBusy } = useAppState();
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   const savedDiseases = useMemo(() => {
@@ -14,7 +17,7 @@ export const FavoritesPage: React.FC = () => {
       .filter((f): f is Extract<typeof f, { type: 'disease' }> => f.type === 'disease')
       .map((fav) => ({
         fav,
-        disease: MOCK_DISEASES.find((d) => d.id === fav.id),
+        disease: diseases.find((d) => d.id === fav.id),
       }))
       .filter((entry): entry is { fav: typeof entry.fav; disease: NonNullable<typeof entry.disease> } =>
         Boolean(entry.disease)
@@ -26,8 +29,8 @@ export const FavoritesPage: React.FC = () => {
       .filter((f): f is Extract<typeof f, { type: 'focus' }> => f.type === 'focus')
       .map((fav) => ({
         fav,
-        focus: MOCK_FOCUSES.find((f) => f.id === fav.id),
-        disease: MOCK_DISEASES.find((d) => d.id === fav.diseaseId),
+        focus: focuses.find((f) => f.id === fav.id),
+        disease: diseases.find((d) => d.id === fav.diseaseId),
       }))
       .filter(
         (
@@ -59,10 +62,10 @@ export const FavoritesPage: React.FC = () => {
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-            รายการโปรดบนอุปกรณ์นี้
+            {user ? 'รายการโปรดของบัญชี' : 'รายการโปรดบนอุปกรณ์นี้'}
           </h1>
           <p className="text-sm text-slate-600">
-            บันทึกเฉพาะหัวข้อโรคและแนวทาง Focus เพื่อเปิดดูซ้ำอย่างรวดเร็ว (ไม่เก็บข้อมูลผู้ป่วย และไม่ซิงก์ข้ามอุปกรณ์ในรุ่น MVP)
+            บันทึกเฉพาะหัวข้อโรคและแนวทาง Focus เพื่อเปิดดูซ้ำอย่างรวดเร็ว {user ? '(ซิงก์กับบัญชี ไม่เก็บข้อมูลผู้ป่วย)' : '(เข้าสู่ระบบเพื่อซิงก์ข้ามอุปกรณ์)'}
           </p>
         </div>
 
@@ -103,6 +106,7 @@ export const FavoritesPage: React.FC = () => {
         )}
       </header>
 
+      {user && guestFavoriteCount > 0 && <div className="border rounded-xl p-4 bg-indigo-50"><p>มีรายการโปรดบนอุปกรณ์นี้ {guestFavoriteCount} รายการ ต้องการรวมเข้าบัญชีหรือไม่?</p><button disabled={favoritesBusy} className="mt-2 rounded-lg bg-indigo-700 text-white px-4 py-2" onClick={() => void importGuestFavorites()}>นำเข้ารายการจากอุปกรณ์</button></div>}
       {/* Empty State */}
       {totalCount === 0 ? (
         <section className="bg-white border border-slate-200 rounded-xl p-8 sm:p-10 text-center space-y-4">
@@ -191,7 +195,7 @@ export const FavoritesPage: React.FC = () => {
                     <div className="space-y-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                         <span className="font-mono font-semibold text-slate-800">
-                          NANDA-I {focus.nandaCode}
+                          {focusCodeLabel(focus)}
                         </span>
                         {disease && (
                           <>

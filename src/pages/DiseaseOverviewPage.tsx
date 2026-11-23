@@ -1,4 +1,9 @@
-import React, { useMemo, useRef, useState } from 'react';
+import { api } from '../lib/api';
+import type { FocusDiagnosis } from '../types/clinical';
+import { clinicalDate } from '../lib/dates';
+import { useContent } from '../context/ContentContext';
+import { focusCodeLabel } from '../types/clinical';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -11,14 +16,13 @@ import {
   Info,
   ShieldCheck,
 } from 'lucide-react';
-import { MOCK_DISEASES } from '../data/mockDiseases';
-import { MOCK_FOCUSES } from '../data/mockFocuses';
 import { useAppState } from '../context/AppStateContext';
 import { ComparePanelModal } from '../components/ComparePanelModal';
 import { ContentErrorState, ContentSkeleton } from '../components/StatusBanners';
 import { FocusProblemType } from '../types/clinical';
 
 export const DiseaseOverviewPage: React.FC = () => {
+  const { diseases, focuses, abbreviations } = useContent();
   const { diseaseId } = useParams<{ diseaseId: string }>();
   const navigate = useNavigate();
   const {
@@ -38,15 +42,15 @@ export const DiseaseOverviewPage: React.FC = () => {
   const compareOpenerRef = useRef<HTMLButtonElement>(null);
 
   const disease = useMemo(
-    () => MOCK_DISEASES.find((d) => d.id === diseaseId) ?? null,
+    () => diseases.find((d) => d.id === diseaseId) ?? null,
     [diseaseId]
   );
 
   // Ordered strictly by expert clinical sequence (expertOrder), never popularity
   const diseaseFocuses = useMemo(() => {
     if (!disease) return [];
-    return MOCK_FOCUSES.filter((f) => f.diseaseIds.includes(disease.id)).sort(
-      (a, b) => a.expertOrder - b.expertOrder
+    return focuses.filter((f) => f.diseaseIds.includes(disease.id)).sort(
+      (a, b) => disease.focusIds.indexOf(a.id) - disease.focusIds.indexOf(b.id)
     );
   }, [disease]);
 
@@ -56,16 +60,15 @@ export const DiseaseOverviewPage: React.FC = () => {
     return { all: diseaseFocuses.length, actual, risk };
   }, [diseaseFocuses]);
 
-  const filteredFocuses = useMemo(() => {
-    return diseaseFocuses.filter((focus) => {
-      if (problemTypeFilter !== 'all' && focus.problemType !== problemTypeFilter) {
-        return false;
-      }
-      if (selectedFilterIds.length === 0) return true;
-      // Match focuses linked to ALL selected assessment cues (enables realistic filtering & empty-filter state testing)
-      return selectedFilterIds.every((fid) => focus.assessmentFilterIds.includes(fid));
-    });
-  }, [diseaseFocuses, problemTypeFilter, selectedFilterIds]);
+  const [filteredFocuses, setFilteredFocuses] = useState<FocusDiagnosis[]>([]);
+  const [filterLoading, setFilterLoading] = useState(true);
+  const [filterError, setFilterError] = useState('');
+  const [filterAttempt, setFilterAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController(); setFilterLoading(true); setFilterError('');
+    void api<FocusDiagnosis[]>(`/diseases/${encodeURIComponent(diseaseId ?? '')}/focuses?` + new URLSearchParams({ problemType: problemTypeFilter, assessmentFilterIds: selectedFilterIds.join(',') }), { signal: controller.signal }).then(items => { if (!controller.signal.aborted) { setFilteredFocuses(items); setFilterLoading(false); } }).catch(e => { if (!controller.signal.aborted) { setFilterError(e.message); setFilterLoading(false); } });
+    return () => controller.abort();
+  }, [diseaseId, problemTypeFilter, selectedFilterIds, filterAttempt]);
 
   const activeFilterCount = selectedFilterIds.length + (problemTypeFilter !== 'all' ? 1 : 0);
 
@@ -149,6 +152,11 @@ export const DiseaseOverviewPage: React.FC = () => {
       </nav>
 
       {/* Review-Due Banner (never hides dates) */}
+      {disease.reviewStatus === 'pending-review' && (
+        <div role="note" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          ข้อมูลสรุปจากเอกสาร · รอหน่วยงานทบทวนก่อนใช้งาน ไม่ใช่แนวทางที่รับรองแล้ว และยังไม่ได้ยืนยันรหัสมาตรฐาน
+        </div>
+      )}
       {disease.reviewStatus === 'review-due' && (
         <div
           role="status"
@@ -158,7 +166,7 @@ export const DiseaseOverviewPage: React.FC = () => {
           <div>
             <p className="font-bold">เนื้อหาถึงรอบทบทวน</p>
             <p className="text-xs sm:text-sm mt-0.5">
-              ทบทวนล่าสุด: {disease.reviewedDate} · กำหนดทบทวนรอบถัดไป: {disease.nextReviewDate} · โปรดตรวจสอบร่วมกับแนวทางปัจจุบันของหอผู้ป่วย
+              ทบทวนล่าสุด: {clinicalDate(disease.reviewedDate)} · กำหนดทบทวนรอบถัดไป: {clinicalDate(disease.nextReviewDate)} · โปรดตรวจสอบร่วมกับแนวทางปัจจุบันของหอผู้ป่วย
             </p>
           </div>
         </div>
@@ -222,9 +230,9 @@ export const DiseaseOverviewPage: React.FC = () => {
         <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
           <span>สถานะที่มา: {disease.provenanceStatus}</span>
           <span aria-hidden="true">·</span>
-          <span>ทบทวนเนื้อหาล่าสุด: {disease.reviewedDate}</span>
+          <span>ทบทวนเนื้อหาล่าสุด: {clinicalDate(disease.reviewedDate)}</span>
           <span aria-hidden="true">·</span>
-          <span>รอบทบทวนถัดไป: {disease.nextReviewDate}</span>
+          <span>รอบทบทวนถัดไป: {clinicalDate(disease.nextReviewDate)}</span>
           <span aria-hidden="true">·</span>
           <span>ผู้รับผิดชอบ: {disease.reviewerUnit}</span>
         </div>
@@ -388,8 +396,10 @@ export const DiseaseOverviewPage: React.FC = () => {
           </span>
         </div>
 
+        {filterLoading && <p role="status">กำลังโหลดประเด็นที่เกี่ยวข้อง…</p>}
+        {filterError && <div role="alert">{filterError} <button className="underline" onClick={() => setFilterAttempt(n=>n+1)}>ลองใหม่</button></div>}
         {/* Filter Empty State (keeps filters visible + clear all button) */}
-        {filteredFocuses.length === 0 ? (
+        {filterLoading || filterError ? null : filteredFocuses.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 text-center space-y-3">
             <Info className="w-6 h-6 text-[#4338CA] mx-auto" aria-hidden="true" />
             <div className="space-y-1 max-w-md mx-auto">
@@ -410,14 +420,15 @@ export const DiseaseOverviewPage: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredFocuses.map((focus, idx) => {
+            {filteredFocuses.map((focus) => {
               const isSelectedCompare = selectedCompareIds.includes(focus.id);
               const isFav = isFocusFavorite(focus.id);
 
               return (
                 <article
                   key={focus.id}
-                  className={`bg-white border rounded-xl p-5 sm:p-6 transition-colors ${
+                  data-card-tone={focus.problemType}
+                  className={`clinical-card bg-white border rounded-xl p-5 sm:p-6 transition-colors ${
                     isSelectedCompare
                       ? 'border-[#7C3AED] ring-1 ring-[#7C3AED]/20'
                       : 'border-slate-200 hover:border-slate-300'
@@ -425,24 +436,20 @@ export const DiseaseOverviewPage: React.FC = () => {
                 >
                   <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                     <div className="space-y-2.5 flex-1 min-w-0">
-                      {/* Quiet metadata line (zero pill clutter) */}
+                      {/* Clinical metadata and problem-type label */}
                       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-600">
                         <span className="font-semibold text-slate-500 tabular-nums">
-                          ลำดับที่ {idx + 1}
+                          ลำดับที่ {diseaseFocuses.findIndex((item) => item.id === focus.id) + 1}
                         </span>
                         <span aria-hidden="true">·</span>
                         <span className="font-mono tabular-nums font-medium text-slate-800">
-                          NANDA-I {focus.nandaCode}
+                          {focusCodeLabel(focus)}
                         </span>
                         <span aria-hidden="true">·</span>
                         <span>{focus.nandaEdition}</span>
                         <span aria-hidden="true">·</span>
                         <span
-                          className={`font-semibold ${
-                            focus.problemType === 'actual'
-                              ? 'text-[#1D4ED8]'
-                              : 'text-[#C2410C]'
-                          }`}
+                          className="clinical-card-label"
                         >
                           {focus.problemType === 'actual'
                             ? 'ปัญหาที่เกิดขึ้นแล้ว (Actual)'

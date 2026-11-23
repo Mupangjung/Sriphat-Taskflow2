@@ -1,3 +1,7 @@
+import { clinicalDate } from '../lib/dates';
+import { api, apiPage, track } from '../lib/api';
+import { useContent } from '../context/ContentContext';
+import { focusCodeLabel } from '../types/clinical';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -10,17 +14,10 @@ import {
   ShieldAlert,
   X,
 } from 'lucide-react';
-import {
-  AMBIGUOUS_ABBREVIATIONS,
-  MOCK_DISEASES,
-  UNVERIFIED_CODES,
-} from '../data/mockDiseases';
-import { MOCK_FOCUSES } from '../data/mockFocuses';
 import { useAppState } from '../context/AppStateContext';
 import { ContentErrorState, ContentSkeleton } from '../components/StatusBanners';
 import {
   CodeSystemsReferenceTable,
-  STANDARD_CODE_SYSTEMS,
 } from '../components/CodeSystemsReferenceTable';
 import { ClinicalEntityType } from '../types/clinical';
 
@@ -41,7 +38,8 @@ interface SearchResultItem {
   codeSystemLabel: string;
   codeValue: string;
   summary: string;
-  reviewStatus?: 'verified' | 'review-due';
+  department?: string;
+  reviewStatus?: 'verified' | 'review-due' | 'pending-review';
   reviewedDate?: string;
   to: string | null;
   reasonNote?: string;
@@ -51,6 +49,7 @@ interface SearchResultItem {
 }
 
 export const SearchPage: React.FC = () => {
+  const { diseases, focuses, abbreviations } = useContent();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState<string>('');
   const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>('all');
@@ -89,160 +88,44 @@ export const SearchPage: React.FC = () => {
   const matchedAmbiguousGroup = useMemo(() => {
     if (!normalizedQuery) return null;
     return (
-      AMBIGUOUS_ABBREVIATIONS.find(
+      abbreviations.find(
         (group) => group.abbr.toLowerCase() === normalizedQuery
       ) ?? null
     );
   }, [normalizedQuery]);
 
-  // Build unified searchable index across Diseases, Procedures, NANDA-I Focuses, and Unverified ICD codes
-  const allSearchableItems = useMemo<SearchResultItem[]>(() => {
-    const diseaseAndProcItems: SearchResultItem[] = MOCK_DISEASES.map((d) => ({
-      key: `disease-${d.id}`,
-      entityType: d.entityType,
-      typeLabel: d.entityType === 'disease' ? 'โรค' : 'หัตถการ',
-      titleTh: d.nameTh,
-      titleEn: d.nameEn,
-      abbreviations: d.abbreviations,
-      codeSystemLabel: d.codeSystem,
-      codeValue: d.icdCode,
-      summary: d.shortSummary,
-      reviewStatus: d.reviewStatus,
-      reviewedDate: d.reviewedDate,
-      to: `/disease/${d.id}`,
-    }));
-
-    const focusItems: SearchResultItem[] = MOCK_FOCUSES.map((f) => {
-      const parentDisease = MOCK_DISEASES.find((d) => d.id === f.diseaseIds[0]);
-      return {
-        key: `focus-${f.id}`,
-        entityType: 'nursing-diagnosis',
-        typeLabel: 'ข้อวินิจฉัยทางการพยาบาล',
-        titleTh: f.titleTh,
-        titleEn: f.titleEn,
-        abbreviations: parentDisease ? parentDisease.abbreviations : [],
-        codeSystemLabel: f.nandaEdition,
-        codeValue: `NANDA-I ${f.nandaCode}`,
-        summary: `${f.shortDescription} (บริบท: ${parentDisease?.nameTh ?? 'IPD'})`,
-        reviewStatus: f.reviewStatus,
-        reviewedDate: f.reviewedDate,
-        to: parentDisease ? `/disease/${parentDisease.id}/focus/${f.id}` : `/focus/${f.id}`,
-      };
-    });
-
-    const codeSystemItems: SearchResultItem[] = STANDARD_CODE_SYSTEMS.map((sys) => {
-      const linkedFilter: CatalogFilter =
-        sys.dataset === 'NANDA-I'
-          ? 'nursing-diagnosis'
-          : sys.dataset === 'ICD-10'
-          ? 'disease'
-          : 'procedure';
-
-      return {
-        key: `codesystem-${sys.dataset}`,
-        entityType: 'code-system',
-        typeLabel: 'ชุดข้อมูลมาตรฐาน',
-        titleTh: sys.dataset,
-        titleEn: sys.officialLabel,
-        abbreviations: [sys.dataset],
-        codeSystemLabel: 'แหล่งทางการ',
-        codeValue: sys.dataset,
-        summary: sys.content,
-        to: null,
-        officialUrl: sys.officialUrl,
-        officialLabel: sys.officialLabel,
-        linkedCatalogFilter: linkedFilter,
-      };
-    });
-
-    return [...codeSystemItems, ...diseaseAndProcItems, ...focusItems];
-  }, []);
-
-  const unverifiedMatches = useMemo<SearchResultItem[]>(() => {
-    if (!normalizedQuery) return [];
-    return UNVERIFIED_CODES.filter(
-      (u) =>
-        u.code.toLowerCase().includes(normalizedQuery) ||
-        u.nameTh.toLowerCase().includes(normalizedQuery) ||
-        u.nameEn.toLowerCase().includes(normalizedQuery)
-    ).map((u) => ({
-      key: `unverified-${u.code}`,
-      entityType: 'unverified',
-      typeLabel: 'ยังไม่มีแนวทางที่ตรวจรับรอง',
-      titleTh: u.nameTh,
-      titleEn: u.nameEn,
-      abbreviations: [],
-      codeSystemLabel: u.codeSystem,
-      codeValue: u.code,
-      summary: u.reasonNote,
-      to: null,
-      reasonNote: u.reasonNote,
-    }));
-  }, [normalizedQuery]);
-
-  const filteredItems = useMemo(() => {
-    const matches = allSearchableItems.filter((item) => {
-      if (catalogFilter !== 'all' && item.entityType !== catalogFilter) {
-        return false;
-      }
-      if (!normalizedQuery) return true;
-
-      const haystack = [
-        item.titleTh,
-        item.titleEn,
-        item.codeValue,
-        item.codeSystemLabel,
-        ...item.abbreviations,
-        item.summary,
-      ]
-        .join(' ')
-        .toLowerCase();
-
-      // Also match aliases on diseases
-      const diseaseObj = MOCK_DISEASES.find((d) => `disease-${d.id}` === item.key);
-      const aliasHit = diseaseObj
-        ? diseaseObj.aliases.some((a) => a.toLowerCase().includes(normalizedQuery))
-        : false;
-
-      return haystack.includes(normalizedQuery) || aliasHit;
-    });
-
-    if (normalizedQuery && catalogFilter === 'all') {
-      return [...matches, ...unverifiedMatches];
-    }
-    return matches;
-  }, [allSearchableItems, catalogFilter, normalizedQuery, unverifiedMatches]);
-
-  // Suggestions shown while typing (max 7)
-  const suggestions = useMemo(() => {
-    if (!normalizedQuery) return [];
-    const combined = [
-      ...allSearchableItems.filter((item) => {
-        const diseaseObj = MOCK_DISEASES.find((d) => `disease-${d.id}` === item.key);
-        const aliasHit = diseaseObj
-          ? diseaseObj.aliases.some((a) => a.toLowerCase().includes(normalizedQuery))
-          : false;
-        const haystack = [
-          item.titleTh,
-          item.titleEn,
-          item.codeValue,
-          item.codeSystemLabel,
-          item.summary,
-          ...item.abbreviations,
-        ]
-          .join(' ')
-          .toLowerCase();
-        return haystack.includes(normalizedQuery) || aliasHit;
-      }),
-      ...unverifiedMatches,
-    ];
-    return combined.slice(0, 8);
-  }, [allSearchableItems, normalizedQuery, unverifiedMatches]);
+  const [filteredItems, setFilteredItems] = useState<SearchResultItem[]>([]);
+  const [suggestions, setSuggestions] = useState<SearchResultItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(true);
+  const [searchError, setSearchError] = useState('');
+  const [searchAttempt, setSearchAttempt] = useState(0);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const lastTracked = useRef('');
+  useEffect(() => { setPage(1); }, [normalizedQuery, catalogFilter]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setSearchLoading(true); setSearchError(''); setActiveSuggestionIdx(-1); setSuggestions([]);
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ q: normalizedQuery, type: catalogFilter, pageSize: '20', page: String(page) });
+      void Promise.all([
+        apiPage<SearchResultItem>('/catalog?' + params, { signal: controller.signal }),
+        api<SearchResultItem[]>('/search/suggestions?' + new URLSearchParams({ q: normalizedQuery }), { signal: controller.signal }),
+      ]).then(([items, matches]) => {
+        if (controller.signal.aborted) return;
+        setFilteredItems(items.data); setTotal(items.meta.total); setSuggestions(matches); setSearchLoading(false);
+        const key = normalizedQuery + '|' + catalogFilter;
+        if (normalizedQuery && lastTracked.current !== key) track('search', { query: normalizedQuery, catalogType: catalogFilter, searchRequestId: crypto.randomUUID() });
+        lastTracked.current = key;
+      }).catch(e => { if (!controller.signal.aborted) { setSearchError(e.message); setSearchLoading(false); } });
+    }, 300);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [normalizedQuery, catalogFilter, searchAttempt, page]);
 
   const favoriteDiseases = useMemo(() => {
     return favorites
       .filter((f): f is Extract<typeof f, { type: 'disease' }> => f.type === 'disease')
-      .map((f) => MOCK_DISEASES.find((d) => d.id === f.id))
+      .map((f) => diseases.find((d) => d.id === f.id))
       .filter((d): d is NonNullable<typeof d> => Boolean(d));
   }, [favorites]);
 
@@ -273,6 +156,7 @@ export const SearchPage: React.FC = () => {
       const selected = suggestions[activeSuggestionIdx];
       if (selected.to) {
         setDropdownOpen(false);
+        if (selected.key.startsWith('disease-')) track('disease-open', { diseaseId: selected.key.slice(8) });
         navigate(selected.to);
       } else if (selected.entityType === 'code-system') {
         setQuery(selected.titleTh);
@@ -406,7 +290,7 @@ export const SearchPage: React.FC = () => {
                     {item.to ? (
                       <Link
                         to={item.to}
-                        onClick={() => setDropdownOpen(false)}
+                        onClick={() => { setDropdownOpen(false); if (item.key.startsWith('disease-')) track('disease-open', { diseaseId: item.key.slice(8) }); }}
                         className="flex items-start justify-between gap-3 px-4 py-3 min-h-[44px]"
                       >
                         <div className="min-w-0">
@@ -586,7 +470,7 @@ export const SearchPage: React.FC = () => {
           <div>
             <h2 id="catalog-heading" className="text-lg font-bold text-slate-900">
               {normalizedQuery
-                ? `ผลค้นหาสำหรับ “${query.trim()}” (${displayedList.length} รายการ)`
+                ? `ผลค้นหาสำหรับ “${query.trim()}” (${total} รายการ)`
                 : 'รายการโรค หัตถการ และข้อวินิจฉัยในระบบ'}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -605,7 +489,7 @@ export const SearchPage: React.FC = () => {
                 { id: 'all', label: 'ทั้งหมด' },
                 { id: 'disease', label: 'โรค' },
                 { id: 'procedure', label: 'หัตถการ' },
-                { id: 'nursing-diagnosis', label: 'ข้อวินิจฉัย NANDA-I' },
+                { id: 'nursing-diagnosis', label: 'ข้อวินิจฉัย / Focus' },
                 { id: 'code-system', label: 'ชุดข้อมูลมาตรฐาน' },
               ] as { id: CatalogFilter; label: string }[]
             ).map((tab) => (
@@ -625,8 +509,10 @@ export const SearchPage: React.FC = () => {
           </div>
         </div>
 
+        {searchError && <div role="alert" className="p-4 bg-red-50 text-red-800">{searchError} <button onClick={() => setSearchAttempt(a=>a+1)} className="underline">ลองใหม่</button></div>}
+        {searchLoading && <p role="status">กำลังค้นหา…</p>}
         {/* Empty Search State */}
-        {displayedList.length === 0 ? (
+        {searchLoading || searchError ? null : displayedList.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto">
               <FileWarning className="w-6 h-6" aria-hidden="true" />
@@ -657,7 +543,8 @@ export const SearchPage: React.FC = () => {
                 return (
                   <article
                     key={item.key}
-                    className="bg-white border border-[#4338CA]/30 rounded-xl p-5 flex flex-col justify-between gap-4"
+                    data-card-tone="standard"
+                    className="clinical-card bg-white border border-[#4338CA]/30 rounded-xl p-5 flex flex-col justify-between gap-4"
                   >
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
@@ -709,7 +596,8 @@ export const SearchPage: React.FC = () => {
                 return (
                   <article
                     key={item.key}
-                    className="bg-white border border-[#C2410C]/40 rounded-xl p-5 space-y-2.5"
+                    data-card-tone="risk"
+                    className="clinical-card bg-white border border-[#C2410C]/40 rounded-xl p-5 space-y-2.5"
                   >
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                       <span className="font-semibold text-[#C2410C]">{item.typeLabel}</span>
@@ -737,19 +625,14 @@ export const SearchPage: React.FC = () => {
               return (
                 <article
                   key={item.key}
-                  className="bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-5 flex flex-col justify-between gap-4 transition-colors"
+                  data-card-tone={item.entityType}
+                  className="clinical-card bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-5 flex flex-col justify-between gap-4 transition-colors"
                 >
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                         <span
-                          className={`font-semibold ${
-                            item.entityType === 'disease'
-                              ? 'text-[#4338CA]'
-                              : item.entityType === 'procedure'
-                              ? 'text-[#1D4ED8]'
-                              : 'text-[#7C3AED]'
-                          }`}
+                          className="clinical-card-label"
                         >
                           {item.typeLabel}
                         </span>
@@ -761,9 +644,12 @@ export const SearchPage: React.FC = () => {
                         <span>{item.codeSystemLabel}</span>
                       </div>
 
+                      {item.reviewStatus === 'pending-review' && (
+                        <span className="text-xs font-semibold text-amber-800">ข้อมูลจากเอกสาร · รอทบทวน</span>
+                      )}
                       {item.reviewStatus === 'review-due' && (
                         <span className="text-xs font-semibold text-[#C2410C]">
-                          ถึงรอบทบทวน ({item.reviewedDate})
+                          ถึงรอบทบทวน ({clinicalDate(item.reviewedDate)})
                         </span>
                       )}
                     </div>
@@ -776,7 +662,10 @@ export const SearchPage: React.FC = () => {
                         </span>
                       )}
                     </h3>
-                    <p className="text-xs text-slate-500">{item.titleEn}</p>
+                    <p className="text-sm text-slate-500">{item.titleEn}</p>
+                    {item.department && (
+                      <p className="text-xs font-medium text-slate-600">หน่วยงาน: {item.department}</p>
+                    )}
                     <p className="text-sm text-slate-600 leading-relaxed">{item.summary}</p>
                   </div>
 
@@ -784,6 +673,7 @@ export const SearchPage: React.FC = () => {
                     {item.to && (
                       <Link
                         to={item.to}
+                        onClick={() => { if (item.key.startsWith('disease-')) track('disease-open', { diseaseId: item.key.slice(8) }); }}
                         className="inline-flex items-center gap-1.5 min-h-[44px] px-4 py-2 rounded-lg bg-[#4338CA]/10 hover:bg-[#4338CA]/15 text-[#4338CA] text-sm font-semibold transition-colors"
                       >
                         <span>
@@ -820,6 +710,12 @@ export const SearchPage: React.FC = () => {
           </div>
         )}
       </section>
+
+      {total > 20 && <nav aria-label="หน้าผลค้นหา" className="flex items-center justify-center gap-4">
+        <button disabled={page <= 1 || searchLoading} onClick={() => setPage(p=>p-1)} className="border rounded-lg px-4 py-2 disabled:opacity-40">ก่อนหน้า</button>
+        <span>หน้า {page} / {Math.ceil(total / 20)}</span>
+        <button disabled={page * 20 >= total || searchLoading} onClick={() => setPage(p=>p+1)} className="border rounded-lg px-4 py-2 disabled:opacity-40">ถัดไป</button>
+      </nav>}
 
       <CodeSystemsReferenceTable />
     </main>

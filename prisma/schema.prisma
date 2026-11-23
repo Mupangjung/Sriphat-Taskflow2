@@ -1,0 +1,334 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "sqlite"
+ url = env("DATABASE_URL")
+}
+model User {
+ id String @id @default(uuid())
+ email String
+ normalizedEmail String @unique
+ displayName String
+ passwordHash String
+ role String @default("MEMBER")
+ isActive Boolean @default(true)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ sessions RefreshSession[]
+ diseaseFavorites DiseaseFavorite[]
+ focusFavorites FocusFavorite[]
+}
+model RefreshSession {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ tokenHash String @unique
+ familyId String
+ expiresAt DateTime
+ revokedAt DateTime?
+ replacedById String?
+ createdAt DateTime @default(now())
+ @@index([userId, expiresAt])
+}
+model Disease {
+ id String @id
+ entityType String
+ nameTh String
+ nameEn String
+ department String
+ shortSummary String
+ provenanceStatus String
+ reviewStatus String
+ reviewedDate DateTime?
+ nextReviewDate DateTime?
+ reviewerUnit String
+ isSampleLabel String
+ isSample Boolean @default(true)
+ archivedAt DateTime?
+ version Int @default(1)
+ catalogOrder Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ terms DiseaseTerm[]
+ codes DiseaseCode[]
+ considerations DiseaseConsideration[]
+ filters AssessmentFilter[]
+ focuses DiseaseFocus[]
+ favorites DiseaseFavorite[]
+ abbreviationOptions AbbreviationOption[]
+}
+model FocusDiagnosis {
+ id String @id
+ nandaCode String?
+ nandaEdition String
+ titleTh String
+ titleEn String
+ shortDescription String
+ problemType String
+ checkSummary String
+ goalSummary String
+ provenanceStatus String
+ reviewStatus String
+ reviewedDate DateTime?
+ nextReviewDate DateTime?
+ isSample Boolean @default(true)
+ archivedAt DateTime?
+ version Int @default(1)
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ diseases DiseaseFocus[]
+ content FocusContentItem[]
+ differentials FocusDifferential[]
+ example FocusEducationalExample?
+ comparison FocusCompareSummary?
+ icnp FocusIcnpNote?
+ references FocusReference[]
+ nic FocusNicIntervention[]
+ noc FocusNocOutcome[]
+}
+model DiseaseFocus {
+ diseaseId String
+ focusId String
+ expertOrder Int
+ contextOrder Int
+ disease Disease @relation(fields: [diseaseId], references: [id], onDelete: Cascade)
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ filters FocusAssessmentFilter[]
+ favorites FocusFavorite[]
+ @@id([diseaseId, focusId])
+ @@unique([diseaseId, expertOrder])
+}
+model AssessmentFilter {
+ diseaseId String
+ key String
+ label String
+ category String
+ position Int
+ disease Disease @relation(fields: [diseaseId], references: [id], onDelete: Cascade)
+ focuses FocusAssessmentFilter[]
+ @@id([diseaseId, key])
+}
+model FocusAssessmentFilter {
+ diseaseId String
+ focusId String
+ filterKey String
+ context DiseaseFocus @relation(fields: [diseaseId, focusId], references: [diseaseId, focusId], onDelete: Cascade)
+ filter AssessmentFilter @relation(fields: [diseaseId, filterKey], references: [diseaseId, key], onDelete: Cascade)
+ @@id([diseaseId, focusId, filterKey])
+}
+model DiseaseFavorite {
+ userId String
+ diseaseId String
+ savedAt DateTime @default(now())
+ user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ disease Disease @relation(fields: [diseaseId], references: [id], onDelete: Cascade)
+ @@id([userId, diseaseId])
+}
+model FocusFavorite {
+ userId String
+ focusId String
+ diseaseId String
+ savedAt DateTime @default(now())
+ user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+ context DiseaseFocus @relation(fields: [diseaseId, focusId], references: [diseaseId, focusId], onDelete: Cascade)
+ @@id([userId, focusId])
+}
+model AbbreviationGroup {
+ id String @id @default(uuid())
+ abbr String
+ normalizedAbbr String @unique
+ promptText String
+ options AbbreviationOption[]
+}
+model AbbreviationOption {
+ id String @id @default(uuid())
+ groupId String
+ group AbbreviationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+ labelTh String
+ labelEn String
+ codeLabel String
+ targetDiseaseId String?
+ disease Disease? @relation(fields: [targetDiseaseId], references: [id], onDelete: SetNull)
+ statusNote String?
+ position Int
+}
+model CodeSystemReference {
+ id String @id @default(uuid())
+ dataset String @unique
+ content String
+ officialLabel String
+ officialUrl String
+ position Int
+}
+model UnverifiedCode {
+ id String @id @default(uuid())
+ code String
+ codeSystem String
+ nameTh String
+ nameEn String
+ entityType String
+ reasonNote String
+ @@unique([codeSystem, code, entityType])
+}
+model UsageEvent {
+ id String @id @default(uuid())
+ eventId String @unique
+ type String
+ occurredAt DateTime @default(now())
+ receivedAt DateTime @default(now())
+ diseaseId String?
+ focusId String?
+ secondFocusId String?
+ searchRequestId String?
+ resultCount Int?
+ queryFingerprint String?
+ safeQueryLabel String?
+ @@index([type, occurredAt])
+ @@index([diseaseId, occurredAt])
+ @@index([focusId, occurredAt])
+}
+model ContentDemand {
+ id String @id @default(uuid())
+ queryFingerprint String @unique
+ safeQueryLabel String
+ suggestedAction String
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+model GovernanceChecklistItem {
+ id String @id
+ title String
+ detail String
+ status String
+ position Int
+ updatedAt DateTime @updatedAt
+}
+
+model DiseaseTerm {
+ id String @id @default(uuid())
+ diseaseId String
+ disease Disease @relation(fields: [diseaseId], references: [id], onDelete: Cascade)
+ kind String
+ value String
+ normalizedValue String
+ position Int
+ @@unique([diseaseId, kind, normalizedValue])
+}
+
+model DiseaseCode {
+ id String @id @default(uuid())
+ diseaseId String
+ disease Disease @relation(fields: [diseaseId], references: [id], onDelete: Cascade)
+ code String
+ systemLabel String
+ edition String
+ position Int
+ @@unique([diseaseId, systemLabel, edition, code])
+}
+
+model DiseaseConsideration {
+ id String @id @default(uuid())
+ diseaseId String
+ disease Disease @relation(fields: [diseaseId], references: [id], onDelete: Cascade)
+ text String
+ position Int
+ @@unique([diseaseId, position])
+}
+
+model FocusContentItem {
+ id String @id @default(uuid())
+ focusId String
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ kind String
+ text String
+ position Int
+ @@unique([focusId, kind, position])
+}
+
+model FocusDifferential {
+ id String @id @default(uuid())
+ focusId String
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ similarDiagnosis String
+ howToDistinguish String
+ position Int
+
+}
+
+model FocusReference {
+ id String @id @default(uuid())
+ focusId String
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ title String
+ source String
+ edition String
+ year String
+ fileName String?
+ pages String?
+ position Int
+
+}
+
+model FocusNicIntervention {
+ id String @id @default(uuid())
+ focusId String
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ code String
+ edition String
+ labelTh String
+ labelEn String
+ guidelineNote String
+ position Int
+ @@unique([focusId, code, edition])
+}
+
+model FocusNocOutcome {
+ id String @id @default(uuid())
+ focusId String
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ code String
+ edition String
+ labelTh String
+ labelEn String
+ indicators NocIndicator[]
+ position Int
+ @@unique([focusId, code, edition])
+}
+
+model FocusEducationalExample {
+ focusId String @id
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ contextNote String
+ focusLabel String
+ dataText String
+ actionText String
+ responseText String
+}
+
+model FocusCompareSummary {
+ focusId String @id
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ definition String
+ supporting String
+ distinction String
+ dataFocus String
+ responseFocus String
+}
+
+model FocusIcnpNote {
+ focusId String @id
+ focus FocusDiagnosis @relation(fields: [focusId], references: [id], onDelete: Cascade)
+ statusLabel String
+ termExample String
+ disclaimer String
+}
+
+model NocIndicator {
+ id String @id @default(uuid())
+ focusNocOutcomeId String
+ outcome FocusNocOutcome @relation(fields: [focusNocOutcomeId], references: [id], onDelete: Cascade)
+ text String
+ position Int
+ @@unique([focusNocOutcomeId, position])
+}

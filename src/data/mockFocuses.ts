@@ -1,3 +1,4 @@
+import { DOCUMENT_FOCUSES } from './documentDiagnoses';
 import { FocusDiagnosis } from '../types/clinical';
 
 export const MOCK_FOCUSES: FocusDiagnosis[] = [
@@ -2398,4 +2399,5 @@ export const MOCK_FOCUSES: FocusDiagnosis[] = [
       },
     ],
   },
+  ...DOCUMENT_FOCUSES,
 ];

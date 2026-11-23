@@ -1,4 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import type { FocusDiagnosis } from '../types/clinical';
+import { clinicalDate } from '../lib/dates';
+import { api, track } from '../lib/api';
+import { useContent } from '../context/ContentContext';
+import { focusCodeLabel } from '../types/clinical';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -13,8 +18,6 @@ import {
   FileText,
   Layers,
 } from 'lucide-react';
-import { MOCK_DISEASES } from '../data/mockDiseases';
-import { MOCK_FOCUSES } from '../data/mockFocuses';
 import { useAppState } from '../context/AppStateContext';
 import { ContentErrorState, ContentSkeleton } from '../components/StatusBanners';
 import { CodeSystemsReferenceTable } from '../components/CodeSystemsReferenceTable';
@@ -41,6 +44,7 @@ const ALL_SECTION_KEYS: SectionKey[] = [
 ];
 
 export const FocusDetailPage: React.FC = () => {
+  const { diseases, focuses, abbreviations } = useContent();
   const { diseaseId, focusId } = useParams<{ diseaseId?: string; focusId: string }>();
   const navigate = useNavigate();
 
@@ -53,20 +57,27 @@ export const FocusDetailPage: React.FC = () => {
     setQaSim,
   } = useAppState();
 
-  const focus = useMemo(
-    () => MOCK_FOCUSES.find((f) => f.id === focusId) ?? null,
-    [focusId]
-  );
+  const [focus, setFocus] = useState<FocusDiagnosis | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState(false);
+  const [detailAttempt, setDetailAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController(); setDetailLoading(true); setDetailError(false); setFocus(null);
+    void api<FocusDiagnosis>(`/focuses/${encodeURIComponent(focusId ?? '')}` + (diseaseId ? '?' + new URLSearchParams({ diseaseId }) : ''), { signal: controller.signal }).then(item => { if (!controller.signal.aborted) { setFocus(item); setDetailLoading(false); } }).catch(() => { if (!controller.signal.aborted) { setDetailError(true); setDetailLoading(false); } });
+    return () => controller.abort();
+  }, [focusId, diseaseId, detailAttempt]);
 
   const disease = useMemo(() => {
     if (diseaseId) {
-      return MOCK_DISEASES.find((d) => d.id === diseaseId) ?? null;
+      return diseases.find((d) => d.id === diseaseId) ?? null;
     }
     if (focus && focus.diseaseIds.length > 0) {
-      return MOCK_DISEASES.find((d) => d.id === focus.diseaseIds[0]) ?? null;
+      return diseases.find((d) => d.id === focus.diseaseIds[0]) ?? null;
     }
     return null;
   }, [diseaseId, focus]);
+
+  useEffect(() => { if (focus) track('focus-open', { focusId: focus.id, diseaseId: disease?.id }); }, [focus?.id, disease?.id]);
 
   // Default open core DAR & supporting sections for rapid ward scanning; others collapsible
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
@@ -102,7 +113,7 @@ export const FocusDetailPage: React.FC = () => {
     }
   };
 
-  if (qaSim.simulateLoading) {
+  if (qaSim.simulateLoading || detailLoading) {
     return (
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         <ContentSkeleton rows={5} />
@@ -110,7 +121,7 @@ export const FocusDetailPage: React.FC = () => {
     );
   }
 
-  if (qaSim.simulateContentError || !focus) {
+  if (qaSim.simulateContentError || detailError || !focus) {
     return (
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-12">
         <ContentErrorState
@@ -194,6 +205,11 @@ export const FocusDetailPage: React.FC = () => {
       </nav>
 
       {/* Review-Due Notice */}
+      {focus.reviewStatus === 'pending-review' && (
+        <div role="note" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          ข้อมูลสรุปจากเอกสาร · รอหน่วยงานทบทวนก่อนใช้งาน ไม่ใช่แนวทางที่รับรองแล้ว และยังไม่ได้ยืนยันรหัสมาตรฐาน
+        </div>
+      )}
       {focus.reviewStatus === 'review-due' && (
         <div
           role="status"
@@ -203,7 +219,7 @@ export const FocusDetailPage: React.FC = () => {
           <div>
             <p className="font-bold">เนื้อหานี้ถึงรอบทบทวน</p>
             <p className="text-xs sm:text-sm mt-0.5">
-              ทบทวนล่าสุด: {focus.reviewedDate} · รอบทบทวนถัดไป: {focus.nextReviewDate}
+              ทบทวนล่าสุด: {clinicalDate(focus.reviewedDate)} · รอบทบทวนถัดไป: {clinicalDate(focus.nextReviewDate)}
             </p>
           </div>
         </div>
@@ -232,7 +248,7 @@ export const FocusDetailPage: React.FC = () => {
         <div className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs sm:text-sm text-slate-600">
             <span className="font-mono font-semibold text-slate-900 tabular-nums">
-              NANDA-I {focus.nandaCode}
+              {focusCodeLabel(focus)}
             </span>
             <span aria-hidden="true">·</span>
             <span>{focus.nandaEdition}</span>
@@ -331,7 +347,7 @@ export const FocusDetailPage: React.FC = () => {
       {/* Collapsible Clinical Sections */}
       <div className="space-y-3">
         {/* 1. Supporting Cues / Risk Factors */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="supporting" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'supporting',
             '1. ข้อมูลที่สนับสนุนการเลือกปัญหา',
@@ -380,7 +396,7 @@ export const FocusDetailPage: React.FC = () => {
         </section>
 
         {/* 2. Differential Reasoning */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="differential" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'differential',
             '2. จุดแยกจากปัญหาที่คล้ายกัน',
@@ -408,7 +424,7 @@ export const FocusDetailPage: React.FC = () => {
         </section>
 
         {/* 3. A — Assessment */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="data" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'data',
             'A — Assessment: ข้อมูลประเมินที่ควรตรวจสอบและบันทึก',
@@ -436,7 +452,7 @@ export const FocusDetailPage: React.FC = () => {
         </section>
 
         {/* 4. Goals & Optional NOC Outcomes */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="goalsNoc" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'goalsNoc',
             'เป้าหมายการพยาบาล และตัวชี้วัดผลลัพธ์ (NOC)',
@@ -499,7 +515,7 @@ export const FocusDetailPage: React.FC = () => {
         </section>
 
         {/* 5. I — Intervention + Optional NIC */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="action" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'action',
             'I — Intervention: แนวทางการพยาบาลที่สัมพันธ์กับปัญหา',
@@ -565,7 +581,7 @@ export const FocusDetailPage: React.FC = () => {
         </section>
 
         {/* 6. E — Evaluation */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="response" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'response',
             'E — Evaluation: สิ่งที่ควรประเมินผลหลังให้การพยาบาล',
@@ -593,7 +609,7 @@ export const FocusDetailPage: React.FC = () => {
         </section>
 
         {/* 7. Common Charting Pitfalls */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="pitfalls" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'pitfalls',
             'จุดที่มักเขียนตกหล่นในการบันทึกบนหอผู้ป่วย',
@@ -618,7 +634,7 @@ export const FocusDetailPage: React.FC = () => {
         </section>
 
         {/* 8. Educational Example */}
-        <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <section data-card-tone="example" className="clinical-card clinical-section bg-white border border-slate-200 rounded-xl overflow-hidden">
           {renderAccordionHeader(
             'example',
             'ตัวอย่างเพื่อการเรียนรู้ (Educational Example)',
@@ -683,16 +699,16 @@ export const FocusDetailPage: React.FC = () => {
                 <dd className="font-medium text-right">{focus.provenanceStatus}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">ฉบับ NANDA-I:</dt>
+                <dt className="text-slate-500">มาตรฐาน / การเทียบรหัส:</dt>
                 <dd className="font-medium text-right">{focus.nandaEdition}</dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-500">วันที่ทบทวนล่าสุด:</dt>
-                <dd className="font-medium text-right">{focus.reviewedDate}</dd>
+                <dd className="font-medium text-right">{clinicalDate(focus.reviewedDate)}</dd>
               </div>
               <div className="flex justify-between gap-2">
                 <dt className="text-slate-500">กำหนดทบทวนถัดไป:</dt>
-                <dd className="font-medium text-right">{focus.nextReviewDate}</dd>
+                <dd className="font-medium text-right">{clinicalDate(focus.nextReviewDate)}</dd>
               </div>
             </dl>
           </div>
@@ -717,6 +733,8 @@ export const FocusDetailPage: React.FC = () => {
                 <span className="font-semibold text-slate-900">{ref.title}</span>
                 <span className="block text-slate-600">
                   {ref.source} · {ref.edition} ({ref.year})
+                  {ref.pages && <span className="block">หน้า PDF: {ref.pages}</span>}
+                  {ref.fileName && <span className="block break-words">ไฟล์อ้างอิง: {ref.fileName}</span>}
                 </span>
               </li>
             ))}

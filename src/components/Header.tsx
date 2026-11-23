@@ -58,12 +58,13 @@ export const Header: React.FC = () => {
             เปรียบเทียบปัญหา
           </NavLink>
           <NavLink to="/analytics" className={navLinkClass}>
-            สถิติต้นแบบ
+            สถิติการใช้งาน
           </NavLink>
         </nav>
 
         {/* Zone 3: 1 Primary Action + Mobile Drawer Button */}
         <div className="flex items-center gap-2 shrink-0">
+          <Link to="/account" className="text-sm px-3 py-2 rounded-lg border border-slate-300">บัญชี</Link>
           <button
             type="button"
             onClick={() => {
@@ -138,7 +139,7 @@ export const Header: React.FC = () => {
               }`
             }
           >
-            สถิติต้นแบบ
+            สถิติการใช้งาน
           </NavLink>
         </nav>
       )}

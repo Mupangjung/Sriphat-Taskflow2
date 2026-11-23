@@ -1,4 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { useAuth } from './AuthContext';
+import { api, track } from '../lib/api';
+import { focusCodeLabel } from '../types/clinical';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { FavoriteItem, FocusDiagnosis } from '../types/clinical';
 
 const FAVORITES_STORAGE_KEY = 'nursefocus_favorites_v1';
@@ -18,6 +21,10 @@ interface QaSimulationState {
 
 interface AppStateContextValue {
   favorites: FavoriteItem[];
+  favoriteError: string;
+  favoritesBusy: boolean;
+  importGuestFavorites: () => Promise<void>;
+  guestFavoriteCount: number;
   isDiseaseFavorite: (diseaseId: string) => boolean;
   isFocusFavorite: (focusId: string) => boolean;
   toggleDiseaseFavorite: (diseaseId: string) => void;
@@ -37,7 +44,7 @@ const AppStateContext = createContext<AppStateContextValue | undefined>(undefine
 
 export function buildBlankDarTemplate(focus: FocusDiagnosis): string {
   return [
-    `F (ปัญหา / Focus): ${focus.titleTh} (${focus.titleEn}) [NANDA-I ${focus.nandaCode}]`,
+    `F (ปัญหา / Focus): ${focus.titleTh} (${focus.titleEn}) [${focusCodeLabel(focus)}]`,
     `A (Assessment — เวลา __:__ น.):`,
     `- ข้อมูลประเมินสนับสนุนจริง: `,
     `I (Intervention — เวลา __:__ น.):`,
@@ -48,6 +55,13 @@ export function buildBlankDarTemplate(focus: FocusDiagnosis): string {
 }
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, ready } = useAuth();
+  const owner = useRef(user?.id); owner.current = user?.id;
+  const busyRef = useRef(false);
+  const [favoritesBusy, setFavoritesBusy] = useState(false);
+  const [favoriteError, setFavoriteError] = useState('');
+  const readGuest = (): FavoriteItem[] => { try { const items = JSON.parse(localStorage.getItem(FAVORITES_STORAGE_KEY) ?? '[]'); return Array.isArray(items) ? items.filter(i => i && typeof i.id === 'string' && typeof i.savedAt === 'string' && (i.type === 'disease' || (i.type === 'focus' && typeof i.diseaseId === 'string'))) : []; } catch { return []; } };
+  const [guestFavoriteCount, setGuestFavoriteCount] = useState(() => readGuest().length);
   const [favorites, setFavorites] = useState<FavoriteItem[]>(() => {
     try {
       const raw = localStorage.getItem(FAVORITES_STORAGE_KEY);
@@ -77,12 +91,33 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
-    } catch {
-      // Ignore storage quota errors cleanly
+    if (!ready) return;
+    let active = true; setFavoriteError(''); setFavorites([]);
+    if (!user) { setFavorites(readGuest()); busyRef.current = false; setFavoritesBusy(false); return; }
+    busyRef.current = true; setFavoritesBusy(true);
+    void api<FavoriteItem[]>('/me/favorites').then(items => { if (active) setFavorites(items); }).catch(e => { if (active) setFavoriteError(e.message); }).finally(() => { if (active) { busyRef.current = false; setFavoritesBusy(false); } });
+    return () => { active = false; };
+  }, [user?.id, ready]);
+  const mutateFavorites = async (path: string, method: string, next: (items: FavoriteItem[]) => FavoriteItem[], body?: unknown) => {
+    if (busyRef.current || !ready) return;
+    const ownerId = user?.id;
+    if (!ownerId) {
+      const updated = next(readGuest());
+      try { localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated)); setFavorites(updated); setGuestFavoriteCount(updated.length); setFavoriteError(''); }
+      catch { setFavoriteError('ไม่สามารถบันทึกบนอุปกรณ์นี้'); }
+      return;
     }
-  }, [favorites]);
+    busyRef.current = true; setFavoritesBusy(true); setFavoriteError('');
+    try {
+      await api(path, { method, ...(body ? { body: JSON.stringify(body) } : {}) });
+      const updated = await api<FavoriteItem[]>('/me/favorites');
+      if (owner.current === ownerId) setFavorites(updated);
+    } catch (e) { if (owner.current === ownerId) setFavoriteError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'); }
+    finally { if (owner.current === ownerId) { busyRef.current = false; setFavoritesBusy(false); } }
+  };
+  const importGuestFavorites = async () => {
+    await mutateFavorites('/me/favorites/import', 'POST', items => items, { items: readGuest() });
+  };
 
   useEffect(() => {
     const handleOnline = () => setBrowserOnline(true);
@@ -109,41 +144,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [favorites]
   );
 
-  const toggleDiseaseFavorite = useCallback((diseaseId: string) => {
-    setFavorites((prev) => {
-      const exists = prev.some((item) => item.type === 'disease' && item.id === diseaseId);
-      if (exists) {
-        return prev.filter((item) => !(item.type === 'disease' && item.id === diseaseId));
-      }
-      return [
-        { type: 'disease', id: diseaseId, savedAt: new Date().toISOString() },
-        ...prev,
-      ];
-    });
-  }, []);
-
-  const toggleFocusFavorite = useCallback((focusId: string, diseaseId: string) => {
-    setFavorites((prev) => {
-      const exists = prev.some((item) => item.type === 'focus' && item.id === focusId);
-      if (exists) {
-        return prev.filter((item) => !(item.type === 'focus' && item.id === focusId));
-      }
-      return [
-        { type: 'focus', id: focusId, diseaseId, savedAt: new Date().toISOString() },
-        ...prev,
-      ];
-    });
-  }, []);
-
-  const removeFavorite = useCallback((target: FavoriteItem) => {
-    setFavorites((prev) =>
-      prev.filter((item) => !(item.type === target.type && item.id === target.id))
-    );
-  }, []);
-
-  const clearAllFavorites = useCallback(() => {
-    setFavorites([]);
-  }, []);
+  const toggleDiseaseFavorite = (diseaseId: string) => {
+    const exists = favorites.some(f => f.type === 'disease' && f.id === diseaseId);
+    void mutateFavorites(`/me/favorites/diseases/${encodeURIComponent(diseaseId)}`, exists ? 'DELETE' : 'PUT', items => exists ? items.filter(f => !(f.type === 'disease' && f.id === diseaseId)) : [{ type: 'disease', id: diseaseId, savedAt: new Date().toISOString() }, ...items]);
+  };
+  const toggleFocusFavorite = (focusId: string, diseaseId: string) => {
+    const exists = favorites.some(f => f.type === 'focus' && f.id === focusId);
+    void mutateFavorites(`/me/favorites/focuses/${encodeURIComponent(focusId)}`, exists ? 'DELETE' : 'PUT', items => exists ? items.filter(f => !(f.type === 'focus' && f.id === focusId)) : [{ type: 'focus', id: focusId, diseaseId, savedAt: new Date().toISOString() }, ...items], exists ? undefined : { diseaseId });
+  };
+  const removeFavorite = (target: FavoriteItem) => {
+    void mutateFavorites(`/me/favorites/${target.type === 'disease' ? 'diseases' : 'focuses'}/${encodeURIComponent(target.id)}`, 'DELETE', items => items.filter(f => !(f.type === target.type && f.id === target.id)));
+  };
+  const clearAllFavorites = () => { void mutateFavorites('/me/favorites', 'DELETE', () => []); };
 
   const dismissCopyFeedback = useCallback(() => {
     setCopyFeedback((prev) => ({ ...prev, status: 'idle' }));
@@ -151,6 +163,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const openManualCopyFallback = useCallback((focus: FocusDiagnosis) => {
     const templateText = buildBlankDarTemplate(focus);
+    track('copy-fallback', { focusId: focus.id, diseaseId: focus.diseaseIds[0] });
     setCopyFeedback({
       status: 'fallback',
       templateText,
@@ -173,6 +186,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       try {
         await navigator.clipboard.writeText(templateText);
+        track('copy-success', { focusId: focus.id, diseaseId: focus.diseaseIds[0] });
         setCopyFeedback({
           status: 'success',
           templateText,
@@ -192,7 +206,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   return (
     <AppStateContext.Provider
       value={{
-        favorites,
+        favorites, favoriteError, favoritesBusy, importGuestFavorites, guestFavoriteCount,
         isDiseaseFavorite,
         isFocusFavorite,
         toggleDiseaseFavorite,
@@ -208,6 +222,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setQaSim,
       }}
     >
+      {favoriteError && <div role="alert" className="bg-red-50 text-red-800 p-3 text-center">{favoriteError} <button onClick={() => setFavoriteError('')} className="underline">ปิด</button></div>}
+      {favoritesBusy && <div role="status" className="text-center text-sm p-2">กำลังซิงก์รายการโปรด…</div>}
       {children}
     </AppStateContext.Provider>
   );

@@ -53,3 +53,70 @@
 .headline-balance {
   text-wrap: balance;
 }
+
+/* Stable colors describe content categories, never clinical priority. */
+.clinical-card {
+  --card-accent: #4338ca;
+  --card-tint: #eef2ff;
+  border-top: 4px solid var(--card-accent);
+  background-image: linear-gradient(180deg, var(--card-tint), white 140px);
+}
+
+.clinical-card[data-card-tone="procedure"],
+.clinical-card[data-card-tone="goalsNoc"] {
+  --card-accent: #0f766e;
+  --card-tint: #f0fdfa;
+}
+
+.clinical-card[data-card-tone="nursing-diagnosis"],
+.clinical-card[data-card-tone="differential"] {
+  --card-accent: #7e22ce;
+  --card-tint: #faf5ff;
+}
+
+.clinical-card[data-card-tone="actual"],
+.clinical-card[data-card-tone="data"] {
+  --card-accent: #1d4ed8;
+  --card-tint: #eff6ff;
+}
+
+.clinical-card[data-card-tone="risk"],
+.clinical-card[data-card-tone="response"] {
+  --card-accent: #9a3412;
+  --card-tint: #fff7ed;
+}
+
+.clinical-card[data-card-tone="action"] {
+  --card-accent: #3f6212;
+  --card-tint: #f7fee7;
+}
+
+.clinical-card[data-card-tone="pitfalls"] {
+  --card-accent: #9f1239;
+  --card-tint: #fff1f2;
+}
+
+.clinical-card[data-card-tone="standard"],
+.clinical-card[data-card-tone="example"] {
+  --card-accent: #475569;
+  --card-tint: #f1f5f9;
+}
+
+.clinical-card-label {
+  display: inline-flex;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  color: var(--card-accent);
+  background: white;
+  font-weight: 600;
+}
+
+.clinical-section > button {
+  background-color: var(--card-tint);
+}
+
+.clinical-section > button:hover {
+  background-color: var(--card-tint);
+  box-shadow: inset 4px 0 var(--card-accent);
+}

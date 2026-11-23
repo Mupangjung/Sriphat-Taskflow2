@@ -1,17 +1,18 @@
+import { useContent } from '../context/ContentContext';
+import { focusCodeLabel } from '../types/clinical';
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Columns2 } from 'lucide-react';
-import { MOCK_DISEASES } from '../data/mockDiseases';
-import { MOCK_FOCUSES } from '../data/mockFocuses';
 import { ComparisonMatrix } from '../components/ComparisonMatrix';
 
 export const ComparePage: React.FC = () => {
-  const [selectedDiseaseId, setSelectedDiseaseId] = useState<string>(MOCK_DISEASES[0].id);
+  const { diseases, focuses, abbreviations } = useContent();
+  const [selectedDiseaseId, setSelectedDiseaseId] = useState<string>(diseases[0]?.id ?? '');
 
   const availableFocuses = useMemo(
     () =>
-      MOCK_FOCUSES.filter((f) => f.diseaseIds.includes(selectedDiseaseId)).sort(
-        (a, b) => a.expertOrder - b.expertOrder
+      focuses.filter((f) => f.diseaseIds.includes(selectedDiseaseId)).sort(
+        (a, b) => (diseases.find(d => d.id === selectedDiseaseId)?.focusIds.indexOf(a.id) ?? 0) - (diseases.find(d => d.id === selectedDiseaseId)?.focusIds.indexOf(b.id) ?? 0)
       ),
     [selectedDiseaseId]
   );
@@ -21,8 +22,8 @@ export const ComparePage: React.FC = () => {
 
   const handleDiseaseChange = (newDiseaseId: string) => {
     setSelectedDiseaseId(newDiseaseId);
-    const list = MOCK_FOCUSES.filter((f) => f.diseaseIds.includes(newDiseaseId)).sort(
-      (a, b) => a.expertOrder - b.expertOrder
+    const list = focuses.filter((f) => f.diseaseIds.includes(newDiseaseId)).sort(
+      (a, b) => (diseases.find(d => d.id === newDiseaseId)?.focusIds.indexOf(a.id) ?? 0) - (diseases.find(d => d.id === newDiseaseId)?.focusIds.indexOf(b.id) ?? 0)
     );
     setFocusAId(list[0]?.id ?? '');
     setFocusBId(list[1]?.id ?? list[0]?.id ?? '');
@@ -76,7 +77,7 @@ export const ComparePage: React.FC = () => {
             onChange={(e) => handleDiseaseChange(e.target.value)}
             className="w-full min-h-[44px] px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm text-slate-900 focus:border-[#7C3AED] focus:outline-none"
           >
-            {MOCK_DISEASES.map((d) => (
+            {diseases.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.nameTh} ({d.abbreviations[0] ?? d.icdCode})
               </option>
@@ -96,7 +97,7 @@ export const ComparePage: React.FC = () => {
           >
             {availableFocuses.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.titleTh} ({f.nandaCode})
+                {f.titleTh} ({focusCodeLabel(f)})
               </option>
             ))}
           </select>
@@ -114,7 +115,7 @@ export const ComparePage: React.FC = () => {
           >
             {availableFocuses.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.titleTh} ({f.nandaCode})
+                {f.titleTh} ({focusCodeLabel(f)})
               </option>
             ))}
           </select>

@@ -1,3 +1,6 @@
+import { AuthProvider } from './context/AuthContext';
+import { ContentProvider } from './context/ContentContext';
+import { AccountPage } from './pages/AccountPage';
 import React, { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppStateProvider } from './context/AppStateContext';
@@ -21,7 +24,7 @@ const ScrollToTop: React.FC = () => {
 
 export default function App() {
   return (
-    <AppStateProvider>
+    <AuthProvider><ContentProvider><AppStateProvider>
       <BrowserRouter>
         <ScrollToTop />
         <div className="min-h-screen flex flex-col bg-[#F8FAFC] text-[#0F172A]">
@@ -37,6 +40,7 @@ export default function App() {
 
           <div id="main-content" className="flex-1">
             <Routes>
+              <Route path="/account" element={<AccountPage />} />
               <Route path="/" element={<SearchPage />} />
               <Route path="/disease/:diseaseId" element={<DiseaseOverviewPage />} />
               <Route path="/disease/:diseaseId/focus/:focusId" element={<FocusDetailPage />} />
@@ -52,6 +56,6 @@ export default function App() {
           <CopyFeedbackOverlays />
         </div>
       </BrowserRouter>
-    </AppStateProvider>
+    </AppStateProvider></ContentProvider></AuthProvider>
   );
 }

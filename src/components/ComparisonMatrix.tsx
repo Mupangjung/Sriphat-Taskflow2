@@ -1,4 +1,6 @@
-import React from 'react';
+import { focusCodeLabel } from '../types/clinical';
+import React, { useEffect, useState } from 'react';
+import { api, track } from '../lib/api';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import { FocusDiagnosis } from '../types/clinical';
@@ -16,6 +18,18 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
   diseaseId,
   onNavigateDetail,
 }) => {
+  const [pair, setPair] = useState<{ focusA: FocusDiagnosis; focusB: FocusDiagnosis } | null>(null);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController(); setPair(null); setError('');
+    const context = diseaseId ?? focusA.diseaseIds[0];
+    void api<{focusA: FocusDiagnosis; focusB: FocusDiagnosis}>('/comparisons?' + new URLSearchParams({ diseaseId: context, focusAId: focusA.id, focusBId: focusB.id }), { signal: controller.signal }).then(data => { if (!controller.signal.aborted) { setPair(data); track('comparison-open', { diseaseId: context, focusId: focusA.id, secondFocusId: focusB.id }); } }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    return () => controller.abort();
+  }, [diseaseId, focusA.id, focusB.id, attempt]);
+  if (error) return <div role="alert">{error} <button className="underline" onClick={() => setAttempt(a => a+1)}>ลองใหม่</button></div>;
+  if (!pair) return <p role="status">กำลังโหลดข้อมูลเปรียบเทียบ…</p>;
+  focusA = pair.focusA; focusB = pair.focusB;
   const rows: {
     key: keyof FocusDiagnosis['compareSummary'];
     label: string;
@@ -57,7 +71,7 @@ export const ComparisonMatrix: React.FC<ComparisonMatrixProps> = ({
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                 <span className="font-semibold text-[#4338CA]">{label}</span>
                 <span aria-hidden="true">·</span>
-                <span className="font-mono tabular-nums">NANDA-I {item.nandaCode}</span>
+                <span className="font-mono tabular-nums">{focusCodeLabel(item)}</span>
                 <span aria-hidden="true">·</span>
                 <span className="font-medium">
                   {item.problemType === 'actual' ? 'ปัญหาที่เกิดขึ้นแล้ว' : 'ความเสี่ยง'}

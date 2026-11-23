@@ -1,3 +1,4 @@
+import { DOCUMENT_DISEASES } from './documentDiagnoses';
 import {
   AmbiguousAbbreviationGroup,
   DiseaseItem,
@@ -261,6 +262,7 @@ export const MOCK_DISEASES: DiseaseItem[] = [
     reviewerUnit: 'ทีมพยาบาลดูแลผู้ป่วยใช้เครื่องช่วยหายใจ',
     isSampleLabel: 'ตัวอย่างสำหรับทดสอบ',
   },
+  ...DOCUMENT_DISEASES,
 ];
 
 export const AMBIGUOUS_ABBREVIATIONS: AmbiguousAbbreviationGroup[] = [

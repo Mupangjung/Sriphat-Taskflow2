@@ -10,7 +10,7 @@ export const Footer: React.FC = () => {
             NurseFocus — ค้นโรค เจอประเด็น เขียน Focus ครบ
           </p>
           <p className="text-xs text-slate-500">
-            ตัวอย่างสำหรับทดสอบต้นแบบ Frontend (MVP) · ไม่จัดเก็บข้อมูลผู้ป่วย · ใช้ประกอบการพิจารณาทางคลินิกเท่านั้น
+            ระบบอ้างอิงแนวทางการพยาบาล · ไม่จัดเก็บข้อมูลผู้ป่วย · ใช้ประกอบการพิจารณาทางคลินิกเท่านั้น
           </p>
         </div>
 
@@ -28,7 +28,7 @@ export const Footer: React.FC = () => {
           </Link>
           <span aria-hidden="true" className="text-slate-300">·</span>
           <Link to="/analytics" className="text-slate-600 hover:text-[#4338CA] underline-offset-4 hover:underline">
-            สถิติต้นแบบ (ข้อมูลจำลอง)
+            สถิติการใช้งาน
           </Link>
         </div>
       </div>

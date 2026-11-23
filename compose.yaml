@@ -1,0 +1,35 @@
+name: nursefocus
+services:
+  api:
+    build:
+      context: .
+      target: api
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3001"
+      DATABASE_URL: file:/data/nursefocus.db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+      # Localhost-only HTTP testing. Set true behind HTTPS in deployment.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SEED_DATABASE: ${SEED_DATABASE:-true}
+    volumes:
+      - sqlite-data:/data
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+  web:
+    build:
+      context: .
+      target: web
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  sqlite-data:

@@ -1,6 +1,6 @@
 export type ClinicalEntityType = 'disease' | 'procedure' | 'nursing-diagnosis';
 
-export type ReviewStatus = 'verified' | 'review-due';
+export type ReviewStatus = 'verified' | 'review-due' | 'pending-review';
 
 export type FocusProblemType = 'actual' | 'risk';
 
@@ -15,6 +15,8 @@ export interface AssessmentFilterOption {
 }
 
 export interface ClinicalReference {
+  fileName?: string;
+  pages?: string;
   title: string;
   source: string;
   edition: string;
@@ -41,7 +43,7 @@ export interface FocusDiagnosis {
   id: string;
   diseaseIds: string[];
   expertOrder: number;
-  nandaCode: string;
+  nandaCode: string | null;
   nandaEdition: string;
   titleTh: string;
   titleEn: string;
@@ -188,4 +190,8 @@ export interface PrototypeAnalyticsData {
     count: number;
     suggestedAction: string;
   }[];
+}
+
+export function focusCodeLabel(focus: Pick<FocusDiagnosis, 'nandaCode'>): string {
+  return focus.nandaCode ? `NANDA-I ${focus.nandaCode}` : 'Focus จากเอกสาร (ยังไม่เทียบรหัส)';
 }

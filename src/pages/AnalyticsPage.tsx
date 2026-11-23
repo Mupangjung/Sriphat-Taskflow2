@@ -1,16 +1,37 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, BarChart3, CheckCircle2, Info, SlidersHorizontal } from 'lucide-react';
-import { CLINICAL_GOVERNANCE_CHECKLIST, MOCK_ANALYTICS } from '../data/mockAnalytics';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../lib/api';
+import type { PrototypeAnalyticsData } from '../types/clinical';
 import { useAppState } from '../context/AppStateContext';
 
 export const AnalyticsPage: React.FC = () => {
+  const { user, ready } = useAuth();
+  if (!ready) return <p role="status" className="p-6">กำลังตรวจสอบสิทธิ์…</p>;
+  if (!user || user.role !== 'ADMIN') return <main className="max-w-xl mx-auto p-6"><h1 className="text-xl font-bold">สถิติสำหรับผู้ดูแลระบบ</h1><p>กรุณาเข้าสู่ระบบด้วยบัญชีผู้ดูแล</p><Link className="underline" to="/account">ไปหน้าบัญชี</Link></main>;
+  return <AnalyticsReport key={user.id} />;
+};
+const AnalyticsReport: React.FC = () => {
+  const [report, setReport] = useState<PrototypeAnalyticsData | null>(null);
+  const [checklist, setChecklist] = useState<{id: string; title: string; detail: string; status: string}[]>([]);
+  const [error, setError] = useState(''); const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController(); setError('');
+    void Promise.all([api<PrototypeAnalyticsData>('/analytics', { signal: controller.signal }), api<typeof checklist>('/governance-checklist', { signal: controller.signal })]).then(([r,c]) => { setReport(r); setChecklist(c); }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
+    return () => controller.abort();
+  }, [attempt]);
+  if (error) return <div role="alert" className="p-6">{error} <button className="underline" onClick={() => setAttempt(a=>a+1)}>ลองใหม่</button></div>;
+  if (!report) return <p role="status" className="p-6">กำลังโหลดสถิติ…</p>;
+  return <AnalyticsView report={report} checklist={checklist} />;
+};
+const AnalyticsView = ({ report: analytics, checklist: governanceChecklist }: { report: PrototypeAnalyticsData; checklist: {id: string; title: string; detail: string; status: string}[] }) => {
   const { qaSim, setQaSim } = useAppState();
-  const maxDiseaseCount = Math.max(
-    ...MOCK_ANALYTICS.topSearchedDiseases.map((d) => d.searchCount)
+  const maxDiseaseCount = Math.max(1,
+    ...analytics.topSearchedDiseases.map((d) => d.searchCount)
   );
-  const maxFocusCount = Math.max(
-    ...MOCK_ANALYTICS.topOpenedFocuses.map((f) => f.openCount)
+  const maxFocusCount = Math.max(1,
+    ...analytics.topOpenedFocuses.map((f) => f.openCount)
   );
 
   return (
@@ -24,60 +45,60 @@ export const AnalyticsPage: React.FC = () => {
           <span>หน้าค้นหา</span>
         </Link>
         <span aria-hidden="true">/</span>
-        <span className="text-slate-900 font-medium">สถิติการใช้งานต้นแบบ (ข้อมูลจำลอง)</span>
+        <span className="text-slate-900 font-medium">สถิติการใช้งาน (ข้อมูลการใช้งานจริง)</span>
       </nav>
 
       {/* Mandatory Mock Data Disclosure Banner */}
       <section
         role="note"
-        aria-label="คำชี้แจงข้อมูลจำลอง"
+        aria-label="คำชี้แจงข้อมูลการใช้งานจริง"
         className="bg-[#C2410C]/10 border border-[#C2410C]/30 rounded-xl p-5 space-y-2"
       >
         <div className="flex items-center gap-2 text-[#9A3412] font-bold text-base">
           <Info className="w-5 h-5 text-[#C2410C] shrink-0" aria-hidden="true" />
-          <span>{MOCK_ANALYTICS.label}</span>
+          <span>{analytics.label}</span>
         </div>
-        <p className="text-sm text-slate-800 leading-relaxed">{MOCK_ANALYTICS.disclaimer}</p>
-        <p className="text-xs text-slate-600">{MOCK_ANALYTICS.periodLabel}</p>
+        <p className="text-sm text-slate-800 leading-relaxed">{analytics.disclaimer}</p>
+        <p className="text-xs text-slate-600">{analytics.periodLabel}</p>
       </section>
 
       <header className="space-y-1">
         <div className="flex items-center gap-2 text-[#4338CA] text-sm font-semibold">
           <BarChart3 className="w-4 h-4" aria-hidden="true" />
-          <span>สำหรับหัวหน้าหอผู้ป่วย / ผู้รับผิดชอบคุณภาพ — ข้อมูลจำลอง</span>
+          <span>สำหรับหัวหน้าหอผู้ป่วย / ผู้รับผิดชอบคุณภาพ — ข้อมูลการใช้งานจริง</span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-          ภาพรวมหัวข้อที่ค้นหาและช่องว่างเนื้อหา (ข้อมูลจำลอง)
+          ภาพรวมหัวข้อที่ค้นหาและช่องว่างเนื้อหา (ข้อมูลการใช้งานจริง)
         </h1>
       </header>
 
       {/* Summary Metrics (Tabular Numerals) */}
-      <section aria-label="ตัวเลขสรุปข้อมูลจำลอง" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section aria-label="ตัวเลขสรุปข้อมูลการใช้งานจริง" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-1">
-          <p className="text-xs font-medium text-slate-500">ข้อมูลจำลอง · การค้นหาทั้งหมด</p>
+          <p className="text-xs font-medium text-slate-500">ข้อมูลการใช้งานจริง · การค้นหาทั้งหมด</p>
           <p className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-slate-900">
-            {MOCK_ANALYTICS.summaryMetrics.totalSearchesCount.toLocaleString('th-TH')}
+            {analytics.summaryMetrics.totalSearchesCount.toLocaleString('th-TH')}
           </p>
-          <p className="text-xs text-slate-600">ครั้งในช่วงทดสอบต้นแบบ</p>
+          <p className="text-xs text-slate-600">ครั้งในช่วงรายงาน</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-1">
-          <p className="text-xs font-medium text-slate-500">ข้อมูลจำลอง · เปิดหน้าเปรียบเทียบ</p>
+          <p className="text-xs font-medium text-slate-500">ข้อมูลการใช้งานจริง · เปิดหน้าเปรียบเทียบ</p>
           <p className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-[#4338CA]">
-            {MOCK_ANALYTICS.summaryMetrics.compareOpensCount.toLocaleString('th-TH')}
+            {analytics.summaryMetrics.compareOpensCount.toLocaleString('th-TH')}
           </p>
           <p className="text-xs text-slate-600">ครั้งที่เทียบ 2 ปัญหา</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-1">
-          <p className="text-xs font-medium text-slate-500">ข้อมูลจำลอง · คัดลอกโครง FAIE เปล่า</p>
+          <p className="text-xs font-medium text-slate-500">ข้อมูลการใช้งานจริง · คัดลอกโครง FAIE เปล่า</p>
           <p className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-[#7C3AED]">
-            {MOCK_ANALYTICS.summaryMetrics.darCopiesCount.toLocaleString('th-TH')}
+            {analytics.summaryMetrics.darCopiesCount.toLocaleString('th-TH')}
           </p>
           <p className="text-xs text-slate-600">ครั้ง (ไม่ใช่ตัวชี้วัดคุณภาพบันทึก)</p>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-1">
-          <p className="text-xs font-medium text-slate-500">ข้อมูลจำลอง · สัดส่วนคำค้นไม่พบ</p>
+          <p className="text-xs font-medium text-slate-500">ข้อมูลการใช้งานจริง · สัดส่วนคำค้นไม่พบ</p>
           <p className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-[#C2410C]">
-            {MOCK_ANALYTICS.summaryMetrics.unmatchedRatePercent}%
+            {analytics.summaryMetrics.unmatchedRatePercent}%
           </p>
           <p className="text-xs text-slate-600">ใช้ระบุโรคที่ควรพัฒนาเนื้อหาเพิ่ม</p>
         </div>
@@ -87,11 +108,11 @@ export const AnalyticsPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4">
           <div>
-            <p className="text-xs font-semibold text-[#C2410C]">ข้อมูลจำลอง</p>
+            <p className="text-xs font-semibold text-[#C2410C]">ข้อมูลการใช้งานจริง</p>
             <h2 className="text-lg font-bold text-slate-900">โรคที่ถูกค้นหาบ่อย</h2>
           </div>
           <div className="space-y-3.5">
-            {MOCK_ANALYTICS.topSearchedDiseases.map((item) => {
+            {analytics.topSearchedDiseases.map((item) => {
               const widthPct = Math.round((item.searchCount / maxDiseaseCount) * 100);
               return (
                 <div key={item.diseaseId} className="space-y-1.5">
@@ -123,11 +144,11 @@ export const AnalyticsPage: React.FC = () => {
 
         <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4">
           <div>
-            <p className="text-xs font-semibold text-[#C2410C]">ข้อมูลจำลอง</p>
+            <p className="text-xs font-semibold text-[#C2410C]">ข้อมูลการใช้งานจริง</p>
             <h2 className="text-lg font-bold text-slate-900">Focus ที่ถูกเปิดดูบ่อย</h2>
           </div>
           <div className="space-y-3.5">
-            {MOCK_ANALYTICS.topOpenedFocuses.map((item) => {
+            {analytics.topOpenedFocuses.map((item) => {
               const widthPct = Math.round((item.openCount / maxFocusCount) * 100);
               return (
                 <div key={item.focusId} className="space-y-1.5">
@@ -161,7 +182,7 @@ export const AnalyticsPage: React.FC = () => {
       {/* Unmatched Search Queries Table */}
       <section className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="p-5 sm:p-6 border-b border-slate-200">
-          <p className="text-xs font-semibold text-[#C2410C]">ข้อมูลจำลอง</p>
+          <p className="text-xs font-semibold text-[#C2410C]">ข้อมูลการใช้งานจริง</p>
           <h2 className="text-lg font-bold text-slate-900">
             คำค้นที่ไม่พบเนื้อหา (ใช้สำรวจช่องว่างเนื้อหาทางคลินิก)
           </h2>
@@ -171,12 +192,12 @@ export const AnalyticsPage: React.FC = () => {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
                 <th className="py-3 px-5">คำค้นที่ไม่พบเนื้อหา</th>
-                <th className="py-3 px-5 text-right">จำนวนครั้ง (จำลอง)</th>
+                <th className="py-3 px-5 text-right">จำนวนครั้ง</th>
                 <th className="py-3 px-5">ข้อเสนอแนะสำหรับทีมเนื้อหา</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {MOCK_ANALYTICS.unmatchedQueries.map((row) => (
+              {analytics.unmatchedQueries.map((row) => (
                 <tr key={row.query} className="hover:bg-slate-50/70">
                   <td className="py-3.5 px-5 font-mono font-medium text-slate-900">{row.query}</td>
                   <td className="py-3.5 px-5 text-right font-mono tabular-nums text-slate-700">
@@ -200,7 +221,7 @@ export const AnalyticsPage: React.FC = () => {
             </h2>
           </div>
           <ul className="divide-y divide-slate-100">
-            {CLINICAL_GOVERNANCE_CHECKLIST.map((item) => (
+            {governanceChecklist.map((item) => (
               <li key={item.id} className="py-3 first:pt-0 last:pb-0 space-y-1">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="text-sm font-bold text-slate-900">{item.title}</p>
@@ -212,7 +233,7 @@ export const AnalyticsPage: React.FC = () => {
           </ul>
         </section>
 
-        <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4">
+        {import.meta.env.DEV && <section className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4">
           <div className="flex items-center gap-2">
             <SlidersHorizontal className="w-5 h-5 text-[#4338CA]" aria-hidden="true" />
             <h2 className="text-lg font-bold text-slate-900">
@@ -260,7 +281,7 @@ export const AnalyticsPage: React.FC = () => {
               );
             })}
           </div>
-        </section>
+        </section>}
       </div>
     </main>
   );

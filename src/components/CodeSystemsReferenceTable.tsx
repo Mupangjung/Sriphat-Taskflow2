@@ -1,34 +1,8 @@
 import React from 'react';
 import { BookMarked, ExternalLink } from 'lucide-react';
 
-export interface CodeSystemReferenceRow {
-  dataset: string;
-  content: string;
-  officialLabel: string;
-  officialUrl: string;
-}
+import { useContent } from '../context/ContentContext';
 
-export const STANDARD_CODE_SYSTEMS: CodeSystemReferenceRow[] = [
-  {
-    dataset: 'NANDA-I',
-    content: 'ข้อวินิจฉัยทางการพยาบาล',
-    officialLabel: 'NANDA: หนังสือและการจัดหมวด',
-    officialUrl: 'https://nanda.org/nanda-book/',
-  },
-  {
-    dataset: 'ICD-10',
-    content: 'โรค อาการ และภาวะสุขภาพ ไม่ใช่รายการข้อวินิจฉัยทางการพยาบาล',
-    officialLabel: 'WHO: ICD-10 Browser',
-    officialUrl: 'https://icd.who.int/browse10/2019/en',
-  },
-  {
-    dataset: 'ICD-9-CM',
-    content: 'มีทั้งรหัสวินิจฉัยและรหัสหัตถการ โดยต้องแยกหมวด',
-    officialLabel: 'CMS: รายการรหัสและชื่อเต็ม',
-    officialUrl:
-      'https://www.cms.gov/medicare/coding-billing/icd-10-codes/icd-9-cm-diagnosis-procedure-codes-abbreviated-and-full-code-titles',
-  },
-];
 
 interface CodeSystemsReferenceTableProps {
   compact?: boolean;
@@ -37,6 +11,7 @@ interface CodeSystemsReferenceTableProps {
 export const CodeSystemsReferenceTable: React.FC<CodeSystemsReferenceTableProps> = ({
   compact = false,
 }) => {
+  const { codeSystems: STANDARD_CODE_SYSTEMS } = useContent();
   return (
     <section
       aria-labelledby="code-systems-reference-heading"
