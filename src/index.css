@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Noto Sans Thai", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-brand: #7C3AED;
+  --color-brand-hover: #6D28D9;
+  --color-indigo-accent: #4338CA;
+  --color-data-blue: #2563EB;
+  --color-action-lime: #D9F99D;
+  --color-action-text: #1A2E05;
+  --color-response-orange: #C2410C;
+  --color-danger-red: #B91C1C;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    color: #0F172A;
+    background-color: #F8FAFC;
+    scroll-behavior: smooth;
+  }
+
+  /* Respect user motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Clear visible focus indicator for keyboard accessibility */
+  :focus-visible {
+    outline: 2px solid #4338CA;
+    outline-offset: 2px;
+  }
+
+  /* Tabular numerals for clinical codes, counts, and timestamps */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.headline-balance {
+  text-wrap: balance;
+}

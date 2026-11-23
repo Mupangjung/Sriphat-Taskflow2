@@ -1,0 +1,6 @@
+{
+  "name": "NurseFocus — ค้นโรค เจอประเด็น เขียน Focus ครบ",
+  "description": "เว็บแอปพลิเคชันสนับสนุนการระบุปัญหาทางการพยาบาลรายโรค (NANDA-I) และแนวทางเขียนบันทึกแบบ Focus Charting (FAIE) สำหรับพยาบาลหอผู้ป่วยใน",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
